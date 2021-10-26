@@ -70,3 +70,4 @@ Start i nedre vestre hjørne.
 
 1.8*10^05           #q2
 
+#testing
