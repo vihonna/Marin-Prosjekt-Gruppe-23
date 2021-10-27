@@ -1,6 +1,7 @@
 import numpy
 
 
+
 def get_knutepunkt(filename):
     array = les_input(filename)
     return array[0]

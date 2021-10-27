@@ -1,4 +1,3 @@
-import rammedata.txt
 from main import get_knutepunkt
 from main import get_laster
 from main import get_elementer
@@ -24,7 +23,7 @@ def get_theta():
         theta_1 = np.arctan(x_ende1/y_ende1)
         theta_2 = np.arctan(x_ende2/y_ende2)
 
-    print(theta_1)
+    
 
 get_theta()
 
