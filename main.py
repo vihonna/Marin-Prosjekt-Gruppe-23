@@ -5,11 +5,12 @@ def les_input(filename):
     info = []
     with open(filename) as f:
 
-        #Denne informasjonen vil brukes i veldig mange andre deler av oppgaven, så for å forenkle lagres dem som globale
+        #Disse variablene vil brukes i veldig mange andre deler av oppgaven, så for å forenkle lagres dem som globale
         global n_punkt
         global n_element
         global n_laster
 
+        #Dette er arrays som hentes ut fra inputfilen, og vil brukes i flere funksjoner
         global knutepunkt
         global elementer
         global laster
@@ -17,7 +18,7 @@ def les_input(filename):
         n_punkt = int(f.readline())
         info = f.readlines()
 
-        # Lagres som 'temp' da de til slutt skal bli endimensjonale numpy arrays
+        # Dersom disse listene enda er uferdige legges en 'temp' til for at de ikke skrives til de globale variablene med det første
         knutepunkt_temp = []
         elementer_temp = []
         laster_temp = []
@@ -46,80 +47,16 @@ def les_input(filename):
 def matriser_setup(filename):
     les_input(filename)
 
+    #Her lager programmet to tomme svære matriser, hvor n_punkt er antall knutepunkt
     global SysMatrise
     SysMatrise = numpy.zeros((3*n_punkt, 3*n_punkt))
     global R_matrise
     R_matrise = numpy.zeros((3*n_punkt, 1))
 
+    #De to funksjonene som står for alt av utregning av matrisene, de returnerer ingenting da de bare skriver til globale arrays/matriser
     fyll_SystemMatrise()
     fyll_Rmatrise()
-
-
-def sysMatrise_adder(ki, number, ende1, ende2):
-
-    #Variabelen number er den som forteller hvilken av de 4 3x3 matrisene som skal legges til
-    #Denne metoden å appendere til Systemmatrisen er hentet fra den første forelesningen i oktober
-    #For feks element mellom node 1 og 2 vil:
-    #SysMatrise[3*ende1 + i][3*ende1 + j] = ki[i][j] ---> Sysmatrise[3 + 0][3 + 0] = [EA/L]
-    if number == 0:
-        for i in range(3):
-            for j in range(3):
-                SysMatrise[3*ende1 + i][3*ende1 + j] = SysMatrise[3*ende1 + i][3*ende1 + j] + ki[i][j]
-    if number == 1:
-        for i in range(3):
-            for j in range(3):
-                SysMatrise[3*ende2 + i][3*ende2 + j] = SysMatrise[3*ende2 + i][3*ende2 + j] + ki[i][j]
-    if number == 2:
-        for i in range(3):
-            for j in range(3):
-                SysMatrise[3*ende2 + i][3*ende1 + j] = SysMatrise[3*ende2 + i][3*ende1 + j] + ki[i][j]
-    if number == 3:
-        for i in range(3):
-            for j in range(3):
-                SysMatrise[3*ende2 + i][3*ende2 + j] = SysMatrise[3*ende2 + i][3*ende2 + j] + ki[i][j]
-
-
-def Rmatrise_adder(node, mi, qi, theta):
-    arr = numpy.array([0, qi*numpy.cos(theta), mi])
-    print(arr)
-    for i in range(3):
-        R_matrise[3*node + i] = R_matrise[3*node + i] + arr[i]
-
-
-def get_Tmatrise(theta):
-
-    #Lager variablene som skal inn, theta er vinkelen bjelke[i] har på det globale koordinatsystemet
-    s = numpy.sin(theta)
-    c = numpy.cos(theta)
-
-    #Setter opp den generelle Tmatrisen, som kun består av sinus og cosinus som variabler
-    T_matrise = numpy.array([[c, -s, 0, 0, 0, 0], [s, c, 0, 0, 0, 0], [0, 0, 1, 0, 0, 0],
-                             [0, 0, 0, c, -s, 0], [0, 0, 0, s, c, 0], [0, 0, 0, 0, 0, 1]])
-    return T_matrise
-
-
-def fastInnspentSjekk(ende1, ende2, I, A):
-    if knutepunkt[ende1][2] == 1:
-        A1 = A * 10 ** 6
-        A2 = A
-        I1 = I * 10 ** 6
-        I2 = I
-    elif knutepunkt[ende2][2] == 1:
-        A1 = A
-        A2 = A * 10 ** 6
-        I1 = I
-        I2 = I * 10 ** 6
-    else:
-        A1 = A
-        A2 = A
-        I1 = I
-        I2 = I
-    return [A1, A2, I1, I2]
-
-
-def get_Tverrsnittsdata(profil):
-    return [1, 0.1]
-
+        
 
 def fyll_SystemMatrise():
 
@@ -189,7 +126,7 @@ def fyll_SystemMatrise():
         k_mini = numpy.array([k1, k2, k3, k4])
         for l in range(4):
             sysMatrise_adder(k_mini[l], l, ende1, ende2)
-
+ 
 
 def fyll_Rmatrise():
 
@@ -253,6 +190,73 @@ def fyll_Rmatrise():
         print('node 2: ', laster[i][1], ' endemoment ', m2, ' skjærkraft ', q2)
         Rmatrise_adder(laster[i][0], m1, q1, theta)
         Rmatrise_adder(laster[i][1], m2, q2, theta)
+
+
+
+def sysMatrise_adder(ki, number, ende1, ende2):
+
+    #Variabelen number er den som forteller hvilken av de 4 3x3 matrisene som skal legges til
+    #Denne metoden å appendere til Systemmatrisen er hentet fra den første forelesningen i oktober
+    #For feks element mellom node 1 og 2 vil:
+    #SysMatrise[3*ende1 + i][3*ende1 + j] = ki[i][j] ---> Sysmatrise[3 + 0][3 + 0] = [EA/L]
+    if number == 0:
+        for i in range(3):
+            for j in range(3):
+                SysMatrise[3*ende1 + i][3*ende1 + j] = SysMatrise[3*ende1 + i][3*ende1 + j] + ki[i][j]
+    if number == 1:
+        for i in range(3):
+            for j in range(3):
+                SysMatrise[3*ende2 + i][3*ende2 + j] = SysMatrise[3*ende2 + i][3*ende2 + j] + ki[i][j]
+    if number == 2:
+        for i in range(3):
+            for j in range(3):
+                SysMatrise[3*ende2 + i][3*ende1 + j] = SysMatrise[3*ende2 + i][3*ende1 + j] + ki[i][j]
+    if number == 3:
+        for i in range(3):
+            for j in range(3):
+                SysMatrise[3*ende2 + i][3*ende2 + j] = SysMatrise[3*ende2 + i][3*ende2 + j] + ki[i][j]
+
+
+def Rmatrise_adder(node, mi, qi, theta):
+    arr = numpy.array([0, qi*numpy.cos(theta), mi])
+    print(arr)
+    for i in range(3):
+        R_matrise[3*node + i] = R_matrise[3*node + i] + arr[i]
+
+
+def get_Tmatrise(theta):
+
+    #Lager variablene som skal inn, theta er vinkelen bjelke[i] har på det globale koordinatsystemet
+    s = numpy.sin(theta)
+    c = numpy.cos(theta)
+
+    #Setter opp den generelle Tmatrisen, som kun består av sinus og cosinus som variabler
+    T_matrise = numpy.array([[c, -s, 0, 0, 0, 0], [s, c, 0, 0, 0, 0], [0, 0, 1, 0, 0, 0],
+                             [0, 0, 0, c, -s, 0], [0, 0, 0, s, c, 0], [0, 0, 0, 0, 0, 1]])
+    return T_matrise
+
+
+def fastInnspentSjekk(ende1, ende2, I, A):
+    if knutepunkt[ende1][2] == 1:
+        A1 = A * 10 ** 6
+        A2 = A
+        I1 = I * 10 ** 6
+        I2 = I
+    elif knutepunkt[ende2][2] == 1:
+        A1 = A
+        A2 = A * 10 ** 6
+        I1 = I
+        I2 = I * 10 ** 6
+    else:
+        A1 = A
+        A2 = A
+        I1 = I
+        I2 = I
+    return [A1, A2, I1, I2]
+
+
+def get_Tverrsnittsdata(profil):
+    return [1, 0.1]
 
 
 if __name__ == '__main__':
