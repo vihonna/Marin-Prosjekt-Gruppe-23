@@ -40,6 +40,8 @@ def les_input(filename):
                 arr[2] = arr[2]*10**6
                 elementer_temp.append(arr)
             else:
+                arr[2] = arr[2]*1000
+                arr[3] = arr[3]*1000
                 laster_temp.append(arr)
 
         knutepunkt = numpy.array(knutepunkt_temp)
@@ -69,8 +71,10 @@ def fyll_SystemMatrise():
     # Ettersom at lengde og vinkel er nyttig i lastberegingene lagres alle lengder og vinkler globalt
     global L_array
     global theta_array
+    global k_array
     L_array = numpy.zeros(n_element)
     theta_array = numpy.zeros(n_element)
+    k_array = []
 
     for i in range(0, len(elementer)):
 
@@ -92,7 +96,6 @@ def fyll_SystemMatrise():
         I = Tverrsnittsdata[0]
         A = Tverrsnittsdata[1]
         theta = numpy.arcsin((y_ende2 - y_ende1) / L)
-        #print('Theta for bjelke ', i, ' er ', theta)
 
         # Hvis en ende er fastinnspent skal stivheten økes kraftig, det gjøres ved å legge til en variabel a1/a2
         arr = fastInnspentSjekk(ende1, ende2)
@@ -104,12 +107,15 @@ def fyll_SystemMatrise():
         theta_array[i] = theta
 
         # Setter opp den generelle stivhetsmatrisen for et element
-        k = numpy.array([[a1*E*A/L, 0., 0., a2*-E*A/L, 0., 0.],
-                         [0., a1*12*E*I/(L**3), (-6)*E*I/(L**2), 0., a2*(-12)*E*I/(L**3), (-6)*E*I/(L ** 2)],
-                         [0., a1*(-6)*E*I/(L**2), 4*E*I/L, 0., a2*6*E*I/(L**2), 2*E*I/L],
-                         [a1*E*A/L, 0., 0., a2*E*A/L, 0., 0.],
-                         [0., a1*(-12)*E*I/(L**3), 6*E*I/(L**2), 0., a2*12*E*I/(L ** 3), 6*E*I/L],
-                         [0., a1*(-6)*E*I/(L**2), 2*E*I/L, 0., a2*6*E*I/(L**2), 4*E*I/L]])
+        k = numpy.array([[a1*E*A/L, 0., 0., -a2*E*A/L, 0., 0.],
+                         [0., a1*12*E*I/(L**3), a1*(-6)*E*I/(L**2), 0., a2*(-12)*E*I/(L**3), a2*(-6)*E*I/(L ** 2)],
+                         [0., a1*(-6)*E*I/(L**2), a1*4*E*I/L, 0., a2*6*E*I/(L**2), a2*2*E*I/L],
+                         [-a1*E*A/L, 0., 0., a2*E*A/L, 0., 0.],
+                         [0., a1*(-12)*E*I/(L**3), a1*6*E*I/(L**2), 0., a2*12*E*I/(L ** 3), a2*6*E*I/L],
+                         [0., a1*(-6)*E*I/(L**2), a1*2*E*I/L, 0., a2*6*E*I/(L**2), a2*4*E*I/L]])
+
+        #Lagrer lokale k matriser i en liste som senere brukes til å regne ut hvert enkelt endemoment osv
+        k_array.append(k)
 
         # Omgjør elementets lokale stivhetsmatrise til global stivhetsmatrise
         T = get_Tmatrise(theta)
@@ -126,7 +132,8 @@ def fyll_SystemMatrise():
         k4 = [[kg[3][3], kg[3][4], kg[3][5]], [kg[4][3], kg[4][4], kg[4][5]], [kg[5][3], kg[5][4], kg[5][5]]]
 
         #print('k4 for bjelke ', i, ' er: ', k4)
-
+        #print('for bjelke ', i, ' er den lok stivhetsmatrisen: ')
+        #print(kg.astype(int))
         # Adderer inn hver 3x3 del av k matrisen, hvor adder funksjon også trenger å vite node (endei)
         k_mini = numpy.array([k1, k2, k3, k4])
         for l in range(4):
@@ -137,15 +144,21 @@ def fyll_Rmatrise():
     # Hver laster[i] er et array med lengde 5, som består av noder, intensitet og bjelke den ligger på
     # Laster[i] = [node1, node2, intensitet node 1, intensitet node2, elementnummer]
 
-    # For å beregne størrelsen av innspenningskrefter må den totale laststørrelsen være kjent
-    sum_laster_z = 0
-    sum_laster_x = 0
+    # Lastene vil også brukes til å finne lokale endekrefter/moment og lagres derfor i et eget array
+    global R_array
+    R_array = [0]*n_element
+
+    #Lager en variabel som brukes til å lage momentdiagram ved å vite hvilken type last det er
+    a = 0
 
     for i in range(n_laster):
+
 
         # Ettersom at L_array og theta_array er globale variabler kan funksjonen kalle på dem direkte
         L = L_array[laster[i][4]]
         theta = theta_array[laster[i][4]]
+
+        # Lastene vil også brukes til å finne lokale endekrefter/moment og lagres derfor i et eget array
 
         # For å vite hvor store m og q er trengs det å vite hvilken type last det er
         if laster[i][0] == laster[i][1]:  # punktlast, nr = 1
@@ -154,33 +167,25 @@ def fyll_Rmatrise():
             m2 = 0
             q1 = P
             q2 = 0
-            sum_laster_z = P*numpy.cos(theta)
-            sum_laster_x = P*numpy.sin(theta)
-
+            a = 1
         elif laster[i][2] == 0:  # Trekantlast hvor lokal ende 1 er 0
             P = laster[i][3]
             m1 = -P * L * L / 30
             m2 = P * L * L / 20
-            q1 = 3*P * L / 20
-            q2 = 7*P * L / 20
-            sum_laster_z = P*L * numpy.cos(theta) / 2
-            sum_laster_x = P*L * numpy.sin(theta) / 2
+            q1 = 3 * P * L / 20
+            q2 = 7 * P * L / 20
         elif laster[i][3] == 0:  # Trekantlast hvor lokal ende 2 er 0
             P = laster[i][2]
             m1 = -P * L * L / 20
             m2 = P * L * L / 30
-            q1 = 7*P * L / 20
-            q2 = 3*P * L / 20
-            sum_laster_z = P*L * numpy.cos(theta) / 2
-            sum_laster_x = P*L * numpy.sin(theta) / 2
+            q1 = 7 * P * L / 20
+            q2 = 3 * P * L / 20
         elif laster[i][2] == laster[i][3]:
             P = laster[i][2]
             m1 = -P * L * L / 12
             m2 = P * L * L / 12
             q1 = P * L / 2
             q2 = P * L / 2
-            sum_laster_z = P*L * numpy.cos(theta)
-            sum_laster_x = P*L * numpy.sin(theta)
         elif (laster[i][2] > laster[i][3]) or (laster[i][3] > laster[i][2]):  # Firkant + trekantlast
             Pmin = min(laster[i][2], laster[i][3])
             Pmaks = max(laster[i][2], laster[i][3])
@@ -191,40 +196,21 @@ def fyll_Rmatrise():
             m2 = Pmin * L * L / 12
             q1 = Pmin * L / 6
             q2 = Pmin * L / 3
-            sum_laster_z = Pmin * L * numpy.cos(theta)
-            sum_laster_x = Pmin * L * numpy.sin(theta)
             if laster[i][2] > laster[i][3]:
                 m1 = m1 + Pdiff * L * L / 20
                 m2 = m2 - Pdiff * L * L / 30
-                q1 = 7*q1 + Pdiff * L / 20
-                q2 = 3*q2 + Pdiff * L / 20
-                sum_laster_z = Pdiff * L * numpy.cos(theta)
-                sum_laster_x = Pdiff * L * numpy.sin(theta)
+                q1 = q1 + 7 * Pdiff * L / 20
+                q2 = q2 + 3* Pdiff * L / 20
             if laster[i][3] > laster[i][2]:
                 m1 = m1 - Pdiff * L * L / 30
                 m2 = m2 + Pdiff * L * L / 20
-                q1 = 3*q1 + Pdiff * L / 20
-                q2 = 7*q2 + Pdiff * L / 20
-                sum_laster_z = Pdiff * L * numpy.cos(theta) / 2
-                sum_laster_x = Pdiff * L * numpy.sin(theta) / 2
+                q1 = q1 + 3 * Pdiff * L / 20
+                q2 = q2 + 7 * Pdiff * L / 20
 
         # Programmet legger til mi og vi til begge de lokale endene
-        Rmatrise_adder(laster[i][0], -m1, -q1, 0, theta)
-        Rmatrise_adder(laster[i][1], -m2, -q2, 0, theta)
-        #print(R_matrise)
-
-
-def innspenningskrefter(sum_last_z, sum_last_x):
-    # Ettersom at vår ramme er fritt opplagt i begge hjørnene vil denne delen av koden være noe forenklet, ved at den ikke
-    # er i stand til å ta hensyn til momenter i de opplagrede punktene
-
-    # regner ut antall faste innspenninger
-    antall_opplagringer = 2
-    for i in range(0, n_punkt):
-        if knutepunkt[i][2] == 1:
-            V_i = sum_last_z / antall_opplagringer
-            N_i = sum_last_x / antall_opplagringer
-            Rmatrise_adder(i, 0, V_i, N_i, 0)
+        Rmatrise_adder(laster[i][0], m1, q1, 0, theta)
+        Rmatrise_adder(laster[i][1], m2, q2, 0, theta)
+        R_array[i] = [0, m1, q1, 0, m2, q2, a]
 
 
 def sysMatrise_adder(ki, number, ende1, ende2):
@@ -232,8 +218,7 @@ def sysMatrise_adder(ki, number, ende1, ende2):
     # Denne metoden å appendere til Systemmatrisen er hentet fra den første forelesningen i oktober
     # For feks element mellom node 1 og 2 vil:
     # SysMatrise[3*ende1 + i][3*ende1 + j] = ki[i][j] ---> Sysmatrise[3 + 0][3 + 0] = [EA/L]
-    print('number: ', number, 'ki: ', ki)
-    print(SysMatrise)
+    #print('number: ', number, 'ki: ', ki)
     if number == 0:
         for i in range(3):
             for j in range(3):
@@ -241,7 +226,7 @@ def sysMatrise_adder(ki, number, ende1, ende2):
     if number == 1:
         for i in range(3):
             for j in range(3):
-                SysMatrise[3 * ende2 + i][3 * ende2 + j] = SysMatrise[3 * ende2 + i][3 * ende2 + j] + ki[i][j]
+                SysMatrise[3 * ende1 + i][3 * ende2 + j] = SysMatrise[3 * ende2 + i][3 * ende2 + j] + ki[i][j]
     if number == 2:
         for i in range(3):
             for j in range(3):
@@ -251,8 +236,9 @@ def sysMatrise_adder(ki, number, ende1, ende2):
             for j in range(3):
                 SysMatrise[3 * ende2 + i][3 * ende2 + j] = SysMatrise[3 * ende2 + i][3 * ende2 + j] + ki[i][j]
 
+
 def Rmatrise_adder(node, mi, qi, ni, theta):
-    arr = numpy.array([qi*numpy.cos(theta) + ni*numpy.sin(theta), qi*numpy.sin(theta) + ni*numpy.cos(theta), mi])
+    arr = numpy.array([qi*numpy.sin(theta), qi*numpy.cos(theta), mi])
     for i in range(3):
         R_matrise[3*node + i] = R_matrise[3*node + i] + arr[i]
 
@@ -280,19 +266,53 @@ def fastInnspentSjekk(ende1, ende2):
 
 
 def get_Tverrsnittsdata(profil):
-    return [1.29*10**(-6), 0.001]
+    return [1.29*10**(2), 2]
+
 
 def finn_deformasjoner():
-    print(SysMatrise.astype(int))
     SysMatrise_invertert = numpy.linalg.inv(SysMatrise)
-    print(SysMatrise_invertert)
-    #deformasjoner = numpy.linalg.solve(SysMatrise, R_matrise)
+    deformasjoner = numpy.linalg.solve(SysMatrise, R_matrise)
+    #print('Deformasjoner: ')
     #print(deformasjoner)
+    return deformasjoner
+
+
+def kalkuler_krefter():
+    for i in range(0, n_element):
+        r = finn_deformasjoner()
+        ende1 = elementer[i][0]
+        ende2 = elementer[i][1]
+        r_i = numpy.zeros((6, 1))
+        for j in range(0, 6):
+            if j < 3:
+                r_i[j] = (r[ende1*3 + j])
+            else:
+                r_i[j] = (r[ende2*3 + (j-3)])
+
+        if R_array[i] != 0:
+            R_i = numpy.zeros((6, 1))
+            for j in range(0, 6):
+                R_i[j] = R_array[i][j]
+
+        Tmatrise = get_Tmatrise(theta_array[i])
+        Tinv = numpy.linalg.inv(Tmatrise)
+        v = numpy.dot(Tinv, r_i)
+        k_i = numpy.array(k_array[i])
+        krefter = numpy.dot(k_i, v) - R_i
+        print('for bjelke ', i, 'blir kreftene: ')
+        print(krefter)
+
+        #Lager momentdiagram:
+
+
+
 
 if __name__ == '__main__':
     matriser_setup('rammedata.txt')
-    #print(SysMatrise.astype(int))
+    print(SysMatrise.astype(int))
     #print(SysMatrise)
-    finn_deformasjoner()
+    print(finn_deformasjoner())
+    kalkuler_krefter()
+    print(R_matrise)
     # print(int_SysMatrise)
-    # print(R_matrise)
+    #print(R_matrise.astype(int))
