@@ -1,3 +1,4 @@
+import math
 import numpy
 
 
@@ -9,44 +10,60 @@ def les_input(filename):
         global n_punkt
         global n_element
         global n_laster
+        global n_tverrsnitt
 
         # Dette er arrays som hentes ut fra inputfilen, og vil brukes i flere funksjoner
         global knutepunkt
         global elementer
         global laster
+        global tverrsnitt
 
+        # Det er satt krav til inputfilen om at første tall skal være npunktet, så første linje programmet leser vil
+        # da inneholde inputfil
         n_punkt = int(f.readline())
+
         info = f.readlines()
 
         # Dersom disse listene enda er uferdige legges en 'temp' til for at de ikke skrives til de globale variablene med det første
         knutepunkt_temp = []
         elementer_temp = []
         laster_temp = []
+        tverrsnitt_temp = []
 
         a = 0
-        for i in range(0, len(info)):
-            arr = list(map(int, info[i].split()))
-            if (len(arr) < 2) and (a == 0):
+
+        # Her skilles det mellom om hva en gitt linje av tekstfilen inneholder.
+        for i in range(0, len(info)):  # Går gjennom filen linje for linje
+            arr = list(map(int, info[i].split()))  # Lager en tekstlinje om til et array som inneholder heltall
+            if (len(arr) < 2) and (a == 0):  # Linjen inneholder tallet som tilsvarer n_element
                 n_element = int(arr[0])
                 a = 1
-            elif (len(arr) < 2) and (a == 1):
+            elif (len(arr) < 2) and (a == 1):  # Linjen inneholder tallet som tilsvarer antall elementer
                 n_laster = int(arr[0])
                 a = 2
-            elif a == 0:
+            elif (len(arr) < 2) and (a == 2):
+                n_tverrsnitt = int(arr[0])
+                a = 3
+            elif a == 0:  # Linjen består av et array som appenderer til knutepunkt array
                 arr[0] = arr[0]*0.001
                 arr[1] = arr[1]*0.001
                 knutepunkt_temp.append(arr)
-            elif a == 1:
+            elif a == 1: # Linjen består av et array som appenderer til elementer array
                 arr[2] = arr[2]*10**6
                 elementer_temp.append(arr)
-            else:
+            elif a == 2:  # Linjen bestpr av et array som appenderer til laster array
                 arr[2] = arr[2]*1000
                 arr[3] = arr[3]*1000
                 laster_temp.append(arr)
+            elif a == 3:  # Linjen bestpr av et array som appenderer til tverrsnitt array
+                arr = numpy.dot(0.001, arr)
+                arr[0] = 1000
+                tverrsnitt_temp.append(arr)
 
         knutepunkt = numpy.array(knutepunkt_temp)
         elementer = numpy.array(elementer_temp)
         laster = numpy.array(laster_temp)
+        tverrsnitt = numpy.array(tverrsnitt_temp)
 
 
 def matriser_setup(filename):
@@ -58,9 +75,68 @@ def matriser_setup(filename):
     global R_matrise
     R_matrise = numpy.zeros((3 * n_punkt, 1))
 
-    # De to funksjonene som står for alt av utregning av matrisene, de returnerer ingenting da de bare skriver til globale arrays/matriser
-    fyll_SystemMatrise()
-    fyll_Rmatrise()
+
+def get_Tverrsnittsdata(profil):
+    pi = math.pi
+    fy = 0  # Initialverdi
+
+    # parameteren som tas inn i denne funksjonen er et tall som beskriver hvilken utregning av I og A som tilhører
+    # hvilken profil. Funksjonen her har kun som oppgave å ta inn geometri mål og regne ut, ikke å også bestemme disse
+    # parametrene
+    # Tverrsnittet skrives ulikt avhengig av om det regner ut et rør eller Iprofil.
+    # Hvis rør    : Tverrsnitt[i] = [1, R, r, 0, 0]
+    # Hvis Iprofil: Tverrsnitt[i] = [0, B, H, b, h]
+    # B = bredde flens, H = tykkelse flens, b = tykkelse steg, h = høyde steg
+
+    if profil == 0:
+        R = tverrsnitt[0][1] / 2
+        t = tverrsnitt[0][2]
+        r = R - t
+        I = pi * (R**4 - r**4) / 4
+        A = pi * (R**2 - r**2)
+        z = R
+
+    elif profil == 1:
+        B = tverrsnitt[2][1]
+        H = tverrsnitt[2][2]
+        b = tverrsnitt[2][3]
+        h = tverrsnitt[2][4]
+        I = 2 * ((B * H * H * H) / 12 + B * B * H * H * (H + h * 0.5)) + (b * h * h * h) / 12
+        A = 2 * B * H + b * h
+        z = (2*H + h)/2
+
+    elif profil == 2:
+        B = tverrsnitt[2][1]
+        H = tverrsnitt[2][2]
+        b = tverrsnitt[2][3]
+        h = tverrsnitt[2][4]
+        I = 2 * ((B * H * H * H) / 12 + B * B * H * H * (H + h * 0.5)) + (b * h * h * h) / 12
+        A = 2 * B * H + b * h
+        z = (2 * H + h) / 2
+
+    elif profil == 4:  # Testprofil (alt blir bare 1)
+        I = pi * (0.001**4)/4
+        A = pi * (0.001**2)
+    else:
+        print('Valid cross section not found')
+
+    # Finner flytspenning, første element i array tilsvarer om det er stål eller alu
+    if tverrsnitt[profil][0] == 0:  # Stål
+        fy = 300000
+    if tverrsnitt[profil][0] == 1:  # Aluminium
+        fy = 100000
+    return [I, A, z, fy]
+
+
+def get_Tmatrise(theta):
+    # Lager variablene som skal inn, theta er vinkelen bjelke[i] har på det globale koordinatsystemet
+    s = numpy.sin(theta)
+    c = numpy.cos(theta)
+
+    # Setter opp den generelle Tmatrisen, som kun består av sinus og cosinus som variabler
+    T_matrise = numpy.array([[c, -s, 0, 0, 0, 0], [s, c, 0, 0, 0, 0], [0, 0, 1, 0, 0, 0],
+                             [0, 0, 0, c, -s, 0], [0, 0, 0, s, c, 0], [0, 0, 0, 0, 0, 1]])
+    return T_matrise
 
 
 def fyll_SystemMatrise():
@@ -78,9 +154,11 @@ def fyll_SystemMatrise():
 
     for i in range(0, len(elementer)):
 
-        # Generell informasjon om hver bjelke
+        # Henter ut de to lokale bjelkene
         ende1 = elementer[i][0]
         ende2 = elementer[i][1]
+
+        # Koordinatene til de lokale endene til bjelke nummer i
         x_ende1 = knutepunkt[ende1][0]
         y_ende1 = knutepunkt[ende1][1]
         x_ende2 = knutepunkt[ende2][0]
@@ -91,228 +169,227 @@ def fyll_SystemMatrise():
 
         # Finner verdier som trengs for lokal k matrise for hver enkelt bjelke
         L = numpy.sqrt((x_ende1 - x_ende2) ** 2 + (y_ende1 - y_ende2) ** 2)
-        #print('L for bjelke ', i, ' er ', L)
         E = elementer[i][2]
         I = Tverrsnittsdata[0]
         A = Tverrsnittsdata[1]
-        theta = numpy.arcsin((y_ende2 - y_ende1) / L)
 
-        # Hvis en ende er fastinnspent skal stivheten økes kraftig, det gjøres ved å legge til en variabel a1/a2
-        arr = fastInnspentSjekk(ende1, ende2)
-        a1 = arr[0]
-        a2 = arr[1]
+        # Finner vinkelen ved hjelp av en sinusfunksjon, arcsin fant vi ut at kun henter ut verdier mellom 90 og -90
+        # grader, så i oppbygningen av inputfil må man være veldig konsekvent med valg av lokal ende 1 og 2 for at
+        # vinkel mellom alltid vil mindre enn 90 grader og større enn -90.
+        theta = numpy.arcsin((y_ende2 - y_ende1)/L)
 
         # Lagrer lengde og vinklene til bjelkene i globale arrays deklarert i begynnelsen av funksjonen
         L_array[i] = L
         theta_array[i] = theta
 
         # Setter opp den generelle stivhetsmatrisen for et element
-        k = numpy.array([[a1*E*A/L, 0., 0., -a2*E*A/L, 0., 0.],
-                         [0., a1*12*E*I/(L**3), a1*(-6)*E*I/(L**2), 0., a2*(-12)*E*I/(L**3), a2*(-6)*E*I/(L ** 2)],
-                         [0., a1*(-6)*E*I/(L**2), a1*4*E*I/L, 0., a2*6*E*I/(L**2), a2*2*E*I/L],
-                         [-a1*E*A/L, 0., 0., a2*E*A/L, 0., 0.],
-                         [0., a1*(-12)*E*I/(L**3), a1*6*E*I/(L**2), 0., a2*12*E*I/(L ** 3), a2*6*E*I/L],
-                         [0., a1*(-6)*E*I/(L**2), a1*2*E*I/L, 0., a2*6*E*I/(L**2), a2*4*E*I/L]])
+        k = numpy.array([[E*A/L, 0., 0., -E*A/L, 0., 0.],
+                         [0., 12*E*I/(L**3), (-6)*E*I/(L**2), 0., (-12)*E*I/(L**3), (-6)*E*I/(L ** 2)],
+                         [0., (-6)*E*I/(L**2), 4*E*I/L, 0., 6*E*I/(L**2), 2*E*I/L],
+                         [-E*A/L, 0., 0., E*A/L, 0., 0.],
+                         [0., (-12)*E*I/(L**3), 6*E*I/(L**2), 0., 12*E*I/(L ** 3), 6*E*I/(L**2)],
+                         [0., (-6)*E*I/(L**2), 2*E*I/L, 0., 6*E*I/(L**2), 4*E*I/L]])
 
-        #Lagrer lokale k matriser i en liste som senere brukes til å regne ut hvert enkelt endemoment osv
+        # Lagrer lokale k matriser i en liste som senere brukes til å regne ut kreftene på hver bjelke
         k_array.append(k)
 
-        # Omgjør elementets lokale stivhetsmatrise til global stivhetsmatrise
+        # Henter transformasjonsmatrisen T for bjelke i, som transponeres og bruker disse til å globalisere k matrisen
         T = get_Tmatrise(theta)
-        kg_temp = numpy.dot(T, k)
         T_inv = numpy.matrix.transpose(T)
-        kg = numpy.dot(kg_temp, T_inv)
+        kg = T.dot(k).dot(T_inv)
 
-        #print('kg for bjelke ', i, ' er: ', kg.astype(int))
+        p1 = ende1*3  # Global posisjon til lokal ende 1 i stivhetsmatrisen
+        p2 = ende2*3  # Global posisjon til lokal ende 2 i stivhetsmatrisen
 
         # Deler opp 6x6 matrisen i fire 3x3 matriser, som seperat skal legges inn i system matrisen
-        k1 = [[kg[0][0], kg[0][1], kg[0][2]], [kg[1][0], kg[1][1], kg[1][2]], [kg[2][0], kg[2][1], kg[2][2]]]
-        k2 = [[kg[0][3], kg[0][4], kg[0][5]], [kg[1][3], kg[1][4], kg[1][5]], [kg[2][3], kg[2][4], kg[2][5]]]
-        k3 = [[kg[3][0], kg[3][1], kg[3][2]], [kg[4][0], kg[4][1], kg[4][2]], [kg[5][0], kg[5][1], kg[5][2]]]
-        k4 = [[kg[3][3], kg[3][4], kg[3][5]], [kg[4][3], kg[4][4], kg[4][5]], [kg[5][3], kg[5][4], kg[5][5]]]
+        SysMatrise[p1:p1+3, p1:p1+3] += kg[0:3, 0:3]  # kii
+        SysMatrise[p2:p2+3, p2:p2+3] += kg[3:6, 3:6]  # kjj
+        SysMatrise[p1:p1+3, p2:p2+3] += kg[0:3, 3:6]  # kij
+        SysMatrise[p2:p2+3, p1:p1+3] += kg[3:9, 0:3]  # kji
 
-        #print('k4 for bjelke ', i, ' er: ', k4)
-        #print('for bjelke ', i, ' er den lok stivhetsmatrisen: ')
-        #print(kg.astype(int))
-        # Adderer inn hver 3x3 del av k matrisen, hvor adder funksjon også trenger å vite node (endei)
-        k_mini = numpy.array([k1, k2, k3, k4])
-        for l in range(4):
-            sysMatrise_adder(k_mini[l], l, ende1, ende2)
-        #print('SysMatrise nummer ', i, ': ', SysMatrise.astype(int))
 
 def fyll_Rmatrise():
     # Hver laster[i] er et array med lengde 5, som består av noder, intensitet og bjelke den ligger på
-    # Laster[i] = [node1, node2, intensitet node 1, intensitet node2, elementnummer]
+    # Laster[i] = [node1, node2, intensitet node 1, intensitet node2, elementnummer, fortegn]
 
     # Lastene vil også brukes til å finne lokale endekrefter/moment og lagres derfor i et eget array
-    global R_array
-    R_array = [0]*n_element
-
-    #Lager en variabel som brukes til å lage momentdiagram ved å vite hvilken type last det er
-    a = 0
+    global R_matrise_c
+    R_matrise_c = numpy.zeros((6 * n_element, 1))
 
     for i in range(n_laster):
 
+        # Definerer endenodene for hver last
+        node1 = laster[i][0]
+        node2 = laster[i][1]
 
         # Ettersom at L_array og theta_array er globale variabler kan funksjonen kalle på dem direkte
         L = L_array[laster[i][4]]
         theta = theta_array[laster[i][4]]
 
-        # Lastene vil også brukes til å finne lokale endekrefter/moment og lagres derfor i et eget array
+        # Fortegn beskriver om lasten peker på bjelken eller fra bjelken, peker den fra vil denne verdien være -1
+        fortegn = laster[i][5]
+
+        # Tall som beskriver om en gitt last skal tas med i beregning av S
+        s_incl = 1
 
         # For å vite hvor store m og q er trengs det å vite hvilken type last det er
-        if laster[i][0] == laster[i][1]:  # punktlast, nr = 1
+        if laster[i][0] == laster[i][1]:  # Punktlast
             P = laster[i][2]
             m1 = 0
             m2 = 0
-            q1 = P
+            q1 = P * fortegn
             q2 = 0
-            a = 1
-        elif laster[i][2] == 0:  # Trekantlast hvor lokal ende 1 er 0
-            P = laster[i][3]
-            m1 = -P * L * L / 30
-            m2 = P * L * L / 20
-            q1 = 3 * P * L / 20
-            q2 = 7 * P * L / 20
-        elif laster[i][3] == 0:  # Trekantlast hvor lokal ende 2 er 0
-            P = laster[i][2]
-            m1 = -P * L * L / 20
-            m2 = P * L * L / 30
-            q1 = 7 * P * L / 20
-            q2 = 3 * P * L / 20
-        elif laster[i][2] == laster[i][3]:
-            P = laster[i][2]
-            m1 = -P * L * L / 12
-            m2 = P * L * L / 12
-            q1 = P * L / 2
-            q2 = P * L / 2
-        elif (laster[i][2] > laster[i][3]) or (laster[i][3] > laster[i][2]):  # Firkant + trekantlast
-            Pmin = min(laster[i][2], laster[i][3])
-            Pmaks = max(laster[i][2], laster[i][3])
-            Pdiff = Pmaks - Pmin
+            s_incl = 0
+        else:  # Jevnt fordelt last
+            P1 = laster[i][2]
+            P2 = laster[i][3]
+            m1 = ( -P1*L*L/30 - P2*L*L/20 ) * fortegn
+            m2 = ( P1*L*L/20 + P2*L*L/30  ) * fortegn
+            q1 = ( (7*P1*L + 3*P2*L) / 20 ) * fortegn
+            q2 = ( (3*P1*L + 7*P2*L) / 20 ) * fortegn
 
-            # Her benyttes superposisjon, hvor de summeres til slutt
-            m1 = -Pmin * L * L / 12
-            m2 = Pmin * L * L / 12
-            q1 = Pmin * L / 6
-            q2 = Pmin * L / 3
-            if laster[i][2] > laster[i][3]:
-                m1 = m1 + Pdiff * L * L / 20
-                m2 = m2 - Pdiff * L * L / 30
-                q1 = q1 + 7 * Pdiff * L / 20
-                q2 = q2 + 3* Pdiff * L / 20
-            if laster[i][3] > laster[i][2]:
-                m1 = m1 - Pdiff * L * L / 30
-                m2 = m2 + Pdiff * L * L / 20
-                q1 = q1 + 3 * Pdiff * L / 20
-                q2 = q2 + 7 * Pdiff * L / 20
+        # Programmet legger inn i lastvektor, samt at gitte last omdannes til å passe i globalt koordinatysystem
+        # Legger inn for endenode 1:
+        R_matrise[3 * node1 + 0][0] += -q1 * numpy.sin(theta)
+        R_matrise[3 * node1 + 1][0] += q1 * numpy.cos(theta)
+        R_matrise[3 * node1 + 2][0] += m1
 
-        # Programmet legger til mi og vi til begge de lokale endene
-        Rmatrise_adder(laster[i][0], m1, q1, 0, theta)
-        Rmatrise_adder(laster[i][1], m2, q2, 0, theta)
-        R_array[i] = [0, m1, q1, 0, m2, q2, a]
+        # Legger inn for endenode 2:
+        R_matrise[3 * node2 + 0][0] += -q2 * numpy.sin(theta)
+        R_matrise[3 * node2 + 1][0] += q2 * numpy.cos(theta)
+        R_matrise[3 * node2 + 2][0] += m2
+
+        element_i = laster[i][4]
+        # Trengs også å beholde verdiene i lokalt system
+        R_matrise_c[6 * element_i  + 0][0] += 0
+        R_matrise_c[6 * element_i + 1][0] += q1
+        R_matrise_c[6 * element_i + 2][0] += m1
+        R_matrise_c[6 * element_i + 3][0] += 0
+        R_matrise_c[6 * element_i + 4][0] += q2
+        R_matrise_c[6 * element_i + 5][0] += m2
 
 
-def sysMatrise_adder(ki, number, ende1, ende2):
-    # Variabelen number er den som forteller hvilken av de 4 3x3 matrisene som skal legges til
-    # Denne metoden å appendere til Systemmatrisen er hentet fra den første forelesningen i oktober
-    # For feks element mellom node 1 og 2 vil:
-    # SysMatrise[3*ende1 + i][3*ende1 + j] = ki[i][j] ---> Sysmatrise[3 + 0][3 + 0] = [EA/L]
-    #print('number: ', number, 'ki: ', ki)
-    if number == 0:
-        for i in range(3):
-            for j in range(3):
-                SysMatrise[3 * ende1 + i][3 * ende1 + j] = SysMatrise[3 * ende1 + i][3 * ende1 + j] + ki[i][j]
-    if number == 1:
-        for i in range(3):
-            for j in range(3):
-                SysMatrise[3 * ende1 + i][3 * ende2 + j] = SysMatrise[3 * ende2 + i][3 * ende2 + j] + ki[i][j]
-    if number == 2:
-        for i in range(3):
-            for j in range(3):
-                SysMatrise[3 * ende2 + i][3 * ende1 + j] = SysMatrise[3 * ende2 + i][3 * ende1 + j] + ki[i][j]
-    if number == 3:
-        for i in range(3):
-            for j in range(3):
-                SysMatrise[3 * ende2 + i][3 * ende2 + j] = SysMatrise[3 * ende2 + i][3 * ende2 + j] + ki[i][j]
+        print('Globalisert')
+        print('node nummer: ', laster[i][0], ' qi: ', q1*numpy.cos(theta), ' mi: ', m1, ' n1: ', -q1*numpy.sin(theta))
+        print('node nummer: ', laster[i][1], ' qi: ', q2*numpy.cos(theta), ' mi: ', m2, ' n1: ', -q2*numpy.sin(theta))
+        print(' ')
+        print(' ')
 
 
-def Rmatrise_adder(node, mi, qi, ni, theta):
-    arr = numpy.array([qi*numpy.sin(theta), qi*numpy.cos(theta), mi])
-    for i in range(3):
-        R_matrise[3*node + i] = R_matrise[3*node + i] + arr[i]
-
-
-def get_Tmatrise(theta):
-    # Lager variablene som skal inn, theta er vinkelen bjelke[i] har på det globale koordinatsystemet
-    s = numpy.sin(theta)
-    c = numpy.cos(theta)
-
-    # Setter opp den generelle Tmatrisen, som kun består av sinus og cosinus som variabler
-    T_matrise = numpy.array([[c, -s, 0, 0, 0, 0], [s, c, 0, 0, 0, 0], [0, 0, 1, 0, 0, 0],
-                             [0, 0, 0, c, -s, 0], [0, 0, 0, s, c, 0], [0, 0, 0, 0, 0, 1]])
-    return T_matrise
-
-
-def fastInnspentSjekk(ende1, ende2):
-    a1 = 1
-    a2 = 1
-
-    if knutepunkt[ende1][2] == 1:
-        a1 = 10 ** 6
-    if knutepunkt[ende2][2] == 1:
-        a2 = 10 ** 6
-    return [a1, a2]
-
-
-def get_Tverrsnittsdata(profil):
-    return [1.29*10**(2), 2]
+def fastInnspentSjekk():
+    # Funksjonen iterer gjennom alle knutepunkt, og dem som er fast innspent er markert med 1. Adderer dermed en
+    # fjær med svært høy stivhet til knutepunktets diagonal
+    for node in range(0, n_punkt):
+        if knutepunkt[node][2] == 1:
+            SysMatrise[3*node][3*node] += 10**20
+            SysMatrise[3*node + 1][3*node + 1] += 10**20
+            SysMatrise[3*node + 2][3*node + 2] += 10**20
 
 
 def finn_deformasjoner():
-    SysMatrise_invertert = numpy.linalg.inv(SysMatrise)
-    deformasjoner = numpy.linalg.solve(SysMatrise, R_matrise)
-    #print('Deformasjoner: ')
-    #print(deformasjoner)
+
+    # Legger fast innspent fjærer til nodene som er fast innspent.
+    fastInnspentSjekk()
+
+    # Regner ut deformasjoner i det globale koordinatsystemet
+    deformasjoner = numpy.linalg.solve(SysMatrise, -R_matrise)
     return deformasjoner
 
 
 def kalkuler_krefter():
+
+    #Iterer gjennom hver bjelke
     for i in range(0, n_element):
-        r = finn_deformasjoner()
+
+        # Henter de lokale endene
         ende1 = elementer[i][0]
         ende2 = elementer[i][1]
+
+        # r er vektoren for deformasjoner i globalt koordinatsystem
+        r = finn_deformasjoner()
+
+        # r_i er en 6x1 vektor som inneholde globale deformasjoner i hver ende av bjelken
         r_i = numpy.zeros((6, 1))
         for j in range(0, 6):
             if j < 3:
-                r_i[j] = (r[ende1*3 + j])
+                r_i[j] = r[3*ende1 + j]
             else:
-                r_i[j] = (r[ende2*3 + (j-3)])
+                r_i[j] = r[3*ende2 + (j - 3)]
 
-        if R_array[i] != 0:
-            R_i = numpy.zeros((6, 1))
-            for j in range(0, 6):
-                R_i[j] = R_array[i][j]
+        # Omdannes r_i til sitt opprinnelige globale koordinatsystem
+        T = get_Tmatrise(theta_array[i])
+        T_trans = numpy.matrix.transpose(T)
+        v = numpy.matmul(T_trans, r_i)
 
-        Tmatrise = get_Tmatrise(theta_array[i])
-        Tinv = numpy.linalg.inv(Tmatrise)
-        v = numpy.dot(Tinv, r_i)
+        # R_matrise_c er matrisen som inneholdt innfestningskreftene i hver ende av bjelken
+        # Den er altså på størrelsesorden n_element x 6
+        R_i = numpy.zeros((6, 1))
+        for j in range(0, 6):
+            R_i[j] = R_matrise_c[i*6 + j]
+
+        # Henter den lokale stivhetsmatrisen for det gitte elementet
         k_i = numpy.array(k_array[i])
-        krefter = numpy.dot(k_i, v) - R_i
+        print('k_i: ')
+        print(k_i)
+
+        # Løser ligningene for kreftene i S
+        S = numpy.matmul(k_i, v)
+
+        # Printer kreftene ut oversiktilig
+        print(' ')
+        print('Last: ')
+        print(R_i)
         print('for bjelke ', i, 'blir kreftene: ')
-        print(krefter)
+        print(S)
+        midtmoment = midtmomenter(S, i)
+        sjekk_spenning(i, midtmoment)
 
-        #Lager momentdiagram:
 
+def midtmomenter(krefter, element):
 
+    # Legger initialverdiene
+    L = L_array[element]
+    p1 = 0
+    p2 = 0
+
+    # Hvis bjelken er påført last appenderes verdien i hver node til p1 og p2
+    for i in range(0, n_laster):
+        if laster[i][4] == element:
+            p1 = laster[i][2]
+            p2 = laster[i][3]
+
+    # Bidrag fra endemomenter:
+    endemoment_bidrag = ( krefter[2][0] + krefter[5][0]) / 2
+
+    # Bidrag fra last
+    last_bidrag = (p1 * L)/16 + (p2 * L)/16
+
+    midtmoment = endemoment_bidrag + last_bidrag
+
+    print('Midtmoment på bjelke ', element, ' er:', midtmoment)
+
+def sjekk_spenning(Mmax, i):
+    tverrsnitt = get_Tverrsnittsdata(elementer[i][3])
+    z = tverrsnitt[2]
+    I = tverrsnitt[1]
+    fy = tverrsnitt[0]
+    spenning = (Mmax*z)/I
+    if spenning > fy:
+        print('Underdimensjonert for element: ', i)
 
 
 if __name__ == '__main__':
+    # Initialiserer, og danner SysMatrise og lastvektor
     matriser_setup('rammedata.txt')
-    print(SysMatrise.astype(int))
-    #print(SysMatrise)
-    print(finn_deformasjoner())
+
+    # Fyller inn systemmatrise og lastvektor
+    fyll_SystemMatrise()
+    fyll_Rmatrise()
+
+    # Regner ut deformasjoner
+    r1 = finn_deformasjoner()
+
+    #Printer ut deformasjoner i mm
+    print('Deformasjoner i mm')
+    print(numpy.around(numpy.dot(1000, r1)))
     kalkuler_krefter()
-    print(R_matrise)
-    # print(int_SysMatrise)
-    #print(R_matrise.astype(int))
